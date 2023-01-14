@@ -25,8 +25,10 @@ class RawSerializer(BaseSerializer):
     async def serialize(self, data: Union[str, bytes]) -> Message:
         if isinstance(data, str):
             data = data.encode()
-        if data is None:
+        elif data is None:
             data = b""
+        else:
+            data = str(data).encode()
         return Message(data, content_type=self.content_type[0])
 
     async def deserialize(self, data: bytes):
