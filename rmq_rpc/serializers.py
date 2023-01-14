@@ -1,10 +1,11 @@
+import json
 from abc import ABC, abstractmethod
-from aio_pika.abc import AbstractIncomingMessage
+from typing import List, Union
+
 from aio_pika import Message
-from typing import Union, Dict, List
+
 from .enums import ContentType
 
-import json
 
 class BaseSerializer(ABC):
     content_type: List[Union[ContentType, None]] = None
@@ -12,20 +13,23 @@ class BaseSerializer(ABC):
     @abstractmethod
     async def serialize(self, data: bytes) -> Message:
         raise NotImplementedError
-    
+
     @abstractmethod
     async def deserialize(self, data: bytes):
         raise NotImplementedError
 
+
 class RawSerializer(BaseSerializer):
     content_type = [ContentType.TEXT, None]
+
     async def serialize(self, data: Union[str, bytes]) -> Message:
         if isinstance(data, str):
             data = data.encode()
         return Message(data, content_type=self.content_type[0])
-    
+
     async def deserialize(self, data: bytes):
         return data
+
 
 class JSONSerializer(BaseSerializer):
     content_type = [ContentType.JSON]

@@ -1,2 +1,2 @@
-from .client import Client as Client
-from .server import Server as Server
+from .client import Client  # noqa
+from .server import Server  # noqa

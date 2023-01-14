@@ -1,17 +1,30 @@
-from aio_pika.abc import AbstractRobustChannel, AbstractRobustExchange, AbstractIncomingMessage, ConsumerTag, AbstractQueue
-from uuid import uuid4
-from typing import Callable, List, Dict
-from aio_pika import DeliveryMode
-from functools import partial
 import asyncio
 import json
-from .serializers import BaseSerializer
 import logging
+from functools import partial
+from typing import Callable, Dict, List
+
+from aio_pika.abc import (
+    AbstractIncomingMessage,
+    AbstractQueue,
+    AbstractRobustChannel,
+    AbstractRobustExchange,
+    ConsumerTag,
+)
+
+from .serializers import BaseSerializer
 
 log = logging.getLogger(__name__)
 
+
 class Server:
-    def __init__(self, channel: AbstractRobustChannel, exchange: AbstractRobustExchange, *, prefix: str = "") -> None:
+    def __init__(
+        self,
+        channel: AbstractRobustChannel,
+        exchange: AbstractRobustExchange,
+        *,
+        prefix: str = "",
+    ) -> None:
         self.loop = asyncio.get_event_loop()
         self.channel = channel
         self.exchange = exchange
@@ -37,7 +50,9 @@ class Server:
         await queue.bind(self.exchange, routing_key)
         self.queues[routing_key] = queue
         self.functions[routing_key] = func
-        self.consumers[routing_key] = await queue.consume(partial(self.on_message_received, routing_key), no_ack=True)
+        self.consumers[routing_key] = await queue.consume(
+            partial(self.on_message_received, routing_key), no_ack=True
+        )
         log.info(f"Added: {routing_key!r}")
 
     async def on_message_received(self, routing_key: str, msg: AbstractIncomingMessage):
@@ -58,10 +73,12 @@ class Server:
             if msg.content_type in serializer.content_type:
                 message = await serializer.serialize(result)
                 break
-        
+
         if message is None:
-            raise TypeError(f"Message from {func!r} are not supported. Serializer is not available for {msg.content_type!r}")
-    
+            raise TypeError(
+                f"Message from {func!r} are not supported. Serializer is not available for {msg.content_type!r}"
+            )
+
         for msg_attr, msg_attr_value in msg.info().items():
             setattr(message, msg_attr, msg_attr_value)
 
@@ -71,7 +88,9 @@ class Server:
     async def parse_params(self, msg: AbstractIncomingMessage):
         params: dict = json.loads(msg.body)
         if not isinstance(params, dict):
-            log.error(f"The function parameter should be of type dict, not {type(params)}.")
+            log.error(
+                f"The function parameter should be of type dict, not {type(params)}."
+            )
             return
 
         args_param = params.get("args", [])
