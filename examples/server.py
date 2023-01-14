@@ -4,7 +4,7 @@ import os
 
 from aio_pika import connect_robust
 from dotenv import load_dotenv
-from functions import add, json_add
+from functions import add, json_add, long_task
 
 from rmq_rpc import Server
 from rmq_rpc.serializers import JSONSerializer, RawSerializer
@@ -29,11 +29,12 @@ async def main():
     async with connection:
         channel = await connection.channel()
         exchange = await channel.declare_exchange("rmq_rpc", durable=True)
-        server = Server(channel, exchange)
+        server = await Server.create(channel, exchange)
         server.add_serializer(JSONSerializer())
         server.add_serializer(RawSerializer())
         await server.add_route("add", add)
         await server.add_route("json_add", json_add)
+        await server.add_route("long_task", long_task)
         try:
             log.info("Start listening...")
             await asyncio.Future()

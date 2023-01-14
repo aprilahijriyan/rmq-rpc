@@ -1,15 +1,15 @@
 import asyncio
 import logging
 import os
-import random
 import timeit
 
 from aio_pika import connect_robust
 from dotenv import load_dotenv
-from functions import add, json_add
+from functions import add, json_add, long_task
 
 from rmq_rpc import Client
 from rmq_rpc.client import log
+from rmq_rpc.enums import ContentType
 from rmq_rpc.serializers import JSONSerializer, RawSerializer
 
 load_dotenv()
@@ -35,10 +35,20 @@ async def test_rpc_add():
             client.add_serializer(JSONSerializer())
             client.add_serializer(RawSerializer())
             start_time = timeit.default_timer()
+            try:
+                await client.call(long_task, args=(5,), timeout=3.0)
+            except asyncio.TimeoutError:
+                print("Successfully canceled long task (as expected!)")
+
+            await asyncio.gather(
+                *[client.call(add, args=(i, i + i)) for i in range(500)]
+            )
             await asyncio.gather(
                 *[
-                    client.call(random.choice([add, json_add]), args=(i, i + i))
-                    for i in range(1000)
+                    client.call(
+                        json_add, args=(i, i + i), content_type=ContentType.JSON
+                    )
+                    for i in range(500)
                 ]
             )
 
