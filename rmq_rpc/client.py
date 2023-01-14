@@ -93,8 +93,10 @@ class Client:
     async def call(
         self,
         func: Union[Callable, str],
+        *,
         args: List[Any] = [],
         kwargs: Dict[str, Any] = {},
+        timeout: float = None,
         **msg_kwargs,
     ):
         if callable(func):
@@ -108,7 +110,7 @@ class Client:
         params = {"args": args, "kwargs": kwargs}
         body = json.dumps(params).encode()
         cid, future = await self.create_future()
-        msg_kwargs.setdefault("content_type", ContentType.JSON)
+        msg_kwargs.setdefault("content_type", ContentType.TEXT)
         msg_kwargs["correlation_id"] = cid
         msg_kwargs["delivery_mode"] = DeliveryMode.NOT_PERSISTENT
         msg_kwargs["reply_to"] = self.tmp_queue.name
@@ -116,7 +118,7 @@ class Client:
         await self.exchange.publish(message, func)
         log.info(f"Message has been sent to: {func!r}")
         log.debug("Waiting for the result...")
-        result = await future
+        result = await asyncio.wait_for(future, timeout)
         log.debug(f"Get results from {func!r}: {result}")
         return result
 
