@@ -12,12 +12,16 @@ from aio_pika.abc import (
     ConsumerTag,
 )
 
+from .constant import CANCEL_QUEUE_NAME
 from .serializers import BaseSerializer
 
 log = logging.getLogger(__name__)
 
 
 class Server:
+    cancel_queue: AbstractQueue = None
+    cancel_queue_consumer: ConsumerTag = None
+
     def __init__(
         self,
         channel: AbstractRobustChannel,
@@ -33,6 +37,41 @@ class Server:
         self.consumers: Dict[str, ConsumerTag] = {}
         self.queues: Dict[str, AbstractQueue] = {}
         self.serializers: List[BaseSerializer] = []
+        self.tasks: Dict[str, asyncio.Task] = {}
+
+    @classmethod
+    async def create(
+        cls, channel: AbstractRobustChannel, exchange: AbstractRobustExchange
+    ):
+        instance = cls(channel, exchange)
+        instance.cancel_queue = await channel.declare_queue(
+            CANCEL_QUEUE_NAME, durable=True
+        )
+        await instance.cancel_queue.bind(exchange)
+        instance.cancel_queue_consumer = await instance.cancel_queue.consume(
+            instance.task_cancel_handler, no_ack=True
+        )
+        return instance
+
+    async def task_cancel_handler(self, msg: AbstractIncomingMessage):
+        cid = msg.correlation_id
+        if not cid:
+            log.warn("Get messages without a correlation ID")
+            return
+
+        task = self.tasks.get(cid)
+        if task:
+            if task.done():
+                log.warn(f"Unable to cancel task: {cid!r} (Task completed)")
+            else:
+                task.cancel()
+                log.info(f"Canceling the task succeeded: {cid!r}")
+        else:
+            log.error(f"Unable to cancel task: {cid!r} (Task not found)")
+
+    def _remove_task(self, cid: str, t: asyncio.Task):
+        self.tasks.pop(cid, None)
+        log.debug(f"Task removed: {cid!r}")
 
     def add_serializer(self, serializer: BaseSerializer):
         self.serializers.append(serializer)
@@ -67,23 +106,30 @@ class Server:
 
         log.debug("Parse parameters...")
         args, kwargs = await self.parse_params(msg)
-        result = await func(*args, **kwargs)
-        message = None
-        for serializer in self.serializers:
-            if msg.content_type in serializer.content_type:
-                message = await serializer.serialize(result)
-                break
 
-        if message is None:
-            raise TypeError(
-                f"Message from {func!r} are not supported. Serializer is not available for {msg.content_type!r}"
-            )
+        async def _func_executor():
+            log.debug(f"Call function: {func.__name__!r}")
+            result = await func(*args, **kwargs)
+            message = None
+            for serializer in self.serializers:
+                if msg.content_type in serializer.content_type:
+                    message = await serializer.serialize(result)
+                    break
 
-        for msg_attr, msg_attr_value in msg.info().items():
-            setattr(message, msg_attr, msg_attr_value)
+            if message is None:
+                raise TypeError(
+                    f"Message from {func!r} are not supported. Serializer is not available for {msg.content_type!r}"
+                )
 
-        await self.exchange.publish(message, routing_key=msg.reply_to)
-        log.info(f"Result have been forwarded to: {msg.reply_to!r}")
+            for msg_attr, msg_attr_value in msg.info().items():
+                setattr(message, msg_attr, msg_attr_value)
+
+            await self.exchange.publish(message, routing_key=msg.reply_to)
+            log.info(f"Result have been forwarded to: {msg.reply_to!r}")
+
+        task = asyncio.create_task(_func_executor())
+        task.add_done_callback(partial(self._remove_task, msg.correlation_id))
+        self.tasks[msg.correlation_id] = task
 
     async def parse_params(self, msg: AbstractIncomingMessage):
         params: dict = json.loads(msg.body)
@@ -105,4 +151,10 @@ class Server:
 
         self.consumers.clear()
         self.queues.clear()
+        if self.cancel_queue and self.cancel_queue_consumer:
+            await self.cancel_queue.cancel(self.cancel_queue_consumer)
+            await self.cancel_queue.delete(if_unused=False, if_empty=False)
+
+        self.cancel_queue = None
+        self.cancel_queue_consumer = None
         log.debug("Cleaned!")

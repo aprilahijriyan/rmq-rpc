@@ -14,6 +14,7 @@ from aio_pika.abc import (
     ConsumerTag,
 )
 
+from .constant import CANCEL_QUEUE_NAME
 from .enums import ContentType
 from .serializers import BaseSerializer
 
@@ -21,6 +22,9 @@ log = logging.getLogger(__name__)
 
 
 class Client:
+    tmp_queue: AbstractRobustQueue = None
+    tmp_consumer: ConsumerTag = None
+
     def __init__(
         self, channel: AbstractRobustChannel, exchange: AbstractRobustExchange
     ) -> None:
@@ -29,8 +33,6 @@ class Client:
         self.exchange = exchange
         self.futures: Dict[str, asyncio.Future] = {}
         self.serializers: List[BaseSerializer] = []
-        self.tmp_queue: AbstractRobustQueue = None
-        self.tmp_consumer: ConsumerTag = None
 
     @classmethod
     async def create(
@@ -118,8 +120,15 @@ class Client:
         await self.exchange.publish(message, func)
         log.info(f"Message has been sent to: {func!r}")
         log.debug("Waiting for the result...")
-        result = await asyncio.wait_for(future, timeout)
-        log.debug(f"Get results from {func!r}: {result}")
+        try:
+            result = await asyncio.wait_for(future, timeout)
+            log.debug(f"Get results from {func!r}: {result}")
+        except asyncio.TimeoutError:
+            msg = Message(b"", correlation_id=cid)
+            await self.exchange.publish(msg, routing_key=CANCEL_QUEUE_NAME)
+            log.debug(f"Cancel task: {cid!r}")
+            raise
+
         return result
 
     async def close(self):
