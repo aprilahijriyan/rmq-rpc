@@ -1,2 +1,3 @@
 # rmq-rpc
-RabbitMQ Remote Procedure Call (RPC)
+
+A lightweight RPC based on RabbitMQ.
