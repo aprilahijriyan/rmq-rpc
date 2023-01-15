@@ -11,7 +11,7 @@ dev = [
 
 [project]
 name = "rmq-rpc"
-version = "0.2.2"
+version = "0.2.3"
 description = "A lightweight RPC based on RabbitMQ."
 authors = [
     {name = "aprilahijriyan", email = "hijriyan23@gmail.com"},

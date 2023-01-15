@@ -105,7 +105,11 @@ class Server:
             return
 
         log.debug("Parse parameters...")
-        args, kwargs = await self.parse_params(msg)
+        func_params = await self.parse_params(msg)
+        if not isinstance(func_params, tuple):
+            return
+
+        args, kwargs = func_params
 
         async def _func_executor():
             log.debug(f"Call function: {func.__name__!r}")
@@ -132,11 +136,15 @@ class Server:
         self.tasks[msg.correlation_id] = task
 
     async def parse_params(self, msg: AbstractIncomingMessage):
-        params: dict = json.loads(msg.body)
-        if not isinstance(params, dict):
-            log.error(
-                f"The function parameter should be of type dict, not {type(params)}."
-            )
+        try:
+            params: dict = json.loads(msg.body)
+            if not isinstance(params, dict):
+                log.error(
+                    f"The function parameter should be of type dict, not {type(params)}."
+                )
+                return
+        except json.JSONDecodeError:
+            log.exception(f"Unable to parse function parameters: {msg.body}")
             return
 
         args_param = params.get("args", [])
