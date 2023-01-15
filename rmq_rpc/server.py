@@ -157,4 +157,9 @@ class Server:
 
         self.cancel_queue = None
         self.cancel_queue_consumer = None
+        for task in self.tasks.values():
+            if not task.done():
+                task.cancel()
+
+        self.tasks.clear()
         log.debug("Cleaned!")
