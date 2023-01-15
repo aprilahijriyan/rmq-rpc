@@ -81,7 +81,7 @@ class Client:
 
         future.set_result(message)
 
-    async def create_future(self):
+    def create_future(self):
         future = self.loop.create_future()
         cid = str(uuid.uuid4())
         self.futures[cid] = future
@@ -111,7 +111,7 @@ class Client:
 
         params = {"args": args, "kwargs": kwargs}
         body = json.dumps(params).encode()
-        cid, future = await self.create_future()
+        cid, future = self.create_future()
         msg_kwargs.setdefault("content_type", ContentType.TEXT)
         msg_kwargs["correlation_id"] = cid
         msg_kwargs["delivery_mode"] = DeliveryMode.NOT_PERSISTENT
