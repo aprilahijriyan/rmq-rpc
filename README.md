@@ -27,9 +27,9 @@ See [project examples](https://github.com/aprilahijriyan/rmq-rpc/tree/main/examp
 
 ## FAQ
 
-- Can I use the same 'exchange' for server and client ?
+- Can I use a different exchange between server and client?
 
-> Certainly not. Because an 'exchange' is required to send a message to a specific queue associated with that exchange.
+> Certainly not. Because an 'exchange' is required to send a message to a specific queue associated with that exchange. So, you should use the same 'exchange'.
 
 - What exchange types are supported?
 
