@@ -5,7 +5,7 @@ import timeit
 
 from aio_pika import connect_robust
 from dotenv import load_dotenv
-from functions import add, json_add, long_task
+from functions import add, error_task, json_add, long_task
 
 from rmq_rpc import Client
 from rmq_rpc.client import log
@@ -24,7 +24,7 @@ ch.setFormatter(formatter)
 log.addHandler(ch)
 
 
-async def test_rpc_add():
+async def main():
     url = f"amqp://{os.getenv('RABBITMQ_DEFAULT_USER')}:{os.getenv('RABBITMQ_DEFAULT_PASS')}@localhost:5672/%2F"
     connection = await connect_robust(url)
     async with connection:
@@ -35,6 +35,11 @@ async def test_rpc_add():
             client.add_serializer(JSONSerializer())
             client.add_serializer(RawSerializer())
             start_time = timeit.default_timer()
+            try:
+                await client.call(error_task)
+            except ZeroDivisionError:
+                print("'ZeroDivisionError' exception was received. (as expected!)")
+
             try:
                 await client.call(long_task, args=(5,), timeout=3.0)
             except asyncio.TimeoutError:
@@ -60,4 +65,4 @@ async def test_rpc_add():
 
 
 if __name__ == "__main__":
-    asyncio.run(test_rpc_add())
+    asyncio.run(main())
