@@ -1,9 +1,11 @@
 import asyncio
 import json
 import logging
+import pickle
 from functools import partial
 from typing import Callable, Dict, List
 
+from aio_pika import Message
 from aio_pika.abc import (
     AbstractIncomingMessage,
     AbstractQueue,
@@ -113,18 +115,32 @@ class Server:
 
         async def _func_executor():
             log.debug(f"Call function: {func.__name__!r}")
-            result = await func(*args, **kwargs)
-            message = None
-            for serializer in self.serializers:
-                if msg.content_type in serializer.content_type:
-                    message = await serializer.serialize(result)
-                    break
+            success = False
+            try:
+                result = await func(*args, **kwargs)
+            except Exception as e:
+                log.exception(f"Error occurred when calling {func.__name__!r} function")
+                result = e
+            else:
+                message_data = None
+                try:
+                    for serializer in self.serializers:
+                        if msg.content_type in serializer.content_type:
+                            message_data = await serializer.serialize(result)
+                            break
 
-            if message is None:
-                raise TypeError(
-                    f"Message from {func!r} are not supported. Serializer is not available for {msg.content_type!r}"
-                )
+                    if message_data is None:
+                        raise TypeError(
+                            f"Result from {func!r} are not supported. Serializer is not available for {msg.content_type!r}"
+                        )
 
+                    success = True
+                    result = message_data
+                except Exception as e:
+                    result = e
+
+            payload = pickle.dumps((success, result), protocol=pickle.HIGHEST_PROTOCOL)
+            message = Message(payload)
             for msg_attr, msg_attr_value in msg.info().items():
                 setattr(message, msg_attr, msg_attr_value)
 

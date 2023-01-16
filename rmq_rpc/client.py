@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import pickle
 import uuid
 from functools import partial
 from typing import Any, Callable, Dict, List, Union
@@ -64,10 +65,15 @@ class Client:
 
         message = None
         try:
+            success, result = pickle.loads(msg.body)
+            if not success:
+                future.set_exception(result)
+                return
+
             for serializer in self.serializers:
                 match = msg.content_type in serializer.content_type
                 if match:
-                    message = await serializer.deserialize(msg.body)
+                    message = await serializer.deserialize(result)
                     break
 
             if message is None:
@@ -75,7 +81,7 @@ class Client:
                     f"Message are not supported. Serializer is not available for {msg.content_type!r}"
                 )
         except Exception as e:
-            log.error("Failed to deserialize response on message: %r" % message)
+            log.error("Failed to deserialize message")
             future.set_exception(e)
             return
 
